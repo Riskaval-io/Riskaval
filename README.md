@@ -16,6 +16,8 @@ The same logic applies once software starts acting on its own. Once a system can
 
 RiskAval takes risk management ideas that already work in trading and applies them to autonomous execution.
 
+Trust scoring for AI agents isn't a new idea. There's an IETF draft for it, and at least one live product doing agent credit scores. What's missing isn't the concept. It's calibration that comes from actually managing risk with real capital, not a heuristic someone wrote based on what sounded reasonable.
+
 What it actually does:
 
 - Authority that adapts to track record. An agent's autonomy is based on how it's actually performed, not a fixed permission you set once and forget.
@@ -36,6 +38,8 @@ What it actually does:
 **Planned:**
 - A public, cross-system behavioral observatory
 - A pip-installable SDK
+
+Note: multi-hop agent delegation (Agent A authorizing Agent B) is an open problem industry-wide right now. This doesn't solve that yet, and neither does anything else.
 
 Right now the priority is getting the execution layer solid and predictable before I build anything else on top of it. I'm still tuning where the block threshold should sit, and I'll probably get that wrong once or twice before it's right.
 
