@@ -18,6 +18,8 @@ RiskAval takes risk management ideas that already work in trading and applies th
 
 Trust scoring for AI agents isn't a new idea. There's an IETF draft for it, and at least one live product doing agent credit scores. What's missing isn't the concept. It's calibration that comes from actually managing risk with real capital, not a heuristic someone wrote based on what sounded reasonable.
 
+There's a real gap between three things: agent identity (who is this), agent authorization (can it do this), and agent trust (should it, based on what it's actually done). Most of the industry is building the first two. Almost nobody is building the third with real financial stakes behind it. I don't think we need smarter agents. We need agents that know when to stop.
+
 What it actually does:
 
 - Authority that adapts to track record. An agent's autonomy is based on how it's actually performed, not a fixed permission you set once and forget.
