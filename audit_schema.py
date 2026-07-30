@@ -2,9 +2,21 @@
 audit_schema.py -- Modelos de datos del motor de politicas de RiskAval.
 
 Cada accion propuesta por un motor de trading (o, en general, por un
-agente autonomo) se representa como UN AuditEntry: contexto de mercado
-+ estado de riesgo + decision tomada + motivo. Es el objeto que fluye
-entre policy_engine.py, anonymizer.py y aggregated_dataset.py.
+agente autonomo de CUALQUIER dominio) se representa como UN AuditEntry:
+contexto de mercado + estado de riesgo + decision tomada + motivo. Es
+el objeto que fluye entre policy_engine.py, anonymizer.py y
+aggregated_dataset.py.
+
+IMPORTANTE (no es una restriccion, es una aclaracion): action_type
+ACEPTA CUALQUIER STRING, no solo los valores de ActionType de abajo.
+policy_engine.py y anonymizer.py ya usan
+`action_type.value if isinstance(action_type, ActionType) else str(action_type)`
+-- si le pasas "send_email" o "delete_file" en vez de un miembro del
+enum, funciona igual, verificado. ActionType existe como CONVENIENCIA
+para el caso de uso de trading (autocompletado, evitar typos en
+"open_position"), no como una lista cerrada de lo unico permitido. Si
+tu agente no es de trading, simplemente pasa tu propio string de accion
+como `action_type` -- no hace falta extender este enum.
 
 RECONSTRUIDO a partir de fragmentos recuperados de la sesion original
 (chat "MNQ", 2026-07-09) -- estos dataclasses coinciden con el diseño
