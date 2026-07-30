@@ -1,0 +1,101 @@
+# policy_config_example.yaml
+# Configuracion de riesgo de RiskAval calibrada con los valores REALES
+# del motor MOTOR_KMT_C1_SHADOW (delta_std=1.0) -- no valores de ejemplo.
+# account_id, capital, max_contratos, perdida_max_dia/sem y news_blackout
+# vienen directo del CFG real del motor.
+#
+# NOTA DE DISEÑO: los limites de perdida diaria/semanal aqui son una
+# SEGUNDA linea de defensa, no la primera -- el motor ya tiene su propio
+# circuit breaker nativo (Cerebro._breakers()) que bloquea entradas antes
+# de llegar aqui. Esta capa existe para dejar el registro de auditoria
+# estructurado y anonimizable (AuditEntry) que _breakers() no produce,
+# y como respaldo si _breakers() alguna vez tuviera un bug.
+#
+# IMPORTANTE: cualquier "condition" que sea un booleano literal debe ir
+# ENTRE COMILLAS ("true", no true) -- si no, YAML lo convierte en un
+# bool de Python antes de llegar a eval(), y el motor lo bloquea por
+# fallo interno en vez de aplicar la regla.
+
+account_id: "motor-kmt-c1-shadow"
+
+rules:
+  # Espejo exacto de CFG["perdida_max_dia"] / CFG["perdida_max_sem"] --
+  # si cambias esos valores en el motor, actualiza tambien aqui.
+  max_daily_loss: -800
+  max_weekly_loss: -2000
+  max_contracts: 2
+
+  # Espejo de CFG["hora_ini"] / CFG["hora_fin_entradas"] -- ventana casi
+  # de 24h, solo cierra durante mantenimiento CME (17:00-18:00 NY, que
+  # el motor ya excluye por su cuenta antes de llegar aqui tambien).
+  trading_window:
+    start: "00:00"
+    end: "23:50"
+
+  # Espejo de CFG["news_blackout_min"]
+  news_blackout_minutes: 20
+
+# Tier 1 -- BLOCK: la accion se detiene, no se ejecuta contra el broker.
+block:
+  - action: open_position
+    condition: "daily_pnl <= rules.max_daily_loss"
+    reason: "Limite de perdida diaria alcanzado (segunda linea de defensa)"
+
+  - action: open_position
+    condition: "weekly_pnl <= rules.max_weekly_loss"
+    reason: "Limite de perdida semanal alcanzado (segunda linea de defensa)"
+
+  - action: open_position
+    condition: "params.get('contracts', 0) > rules.max_contracts"
+    reason: "Tamano de posicion (orden individual) excede el maximo permitido"
+
+  - action: open_position
+    condition: "(open_contracts + params.get('contracts', 0)) > rules.max_contracts"
+    reason: "Excede exposicion total combinada permitida"
+
+  - action: increase_size
+    condition: "(open_contracts + params.get('contracts', 0)) > rules.max_contracts"
+    reason: "Agregar a una posicion abierta excede la exposicion total permitida"
+
+  - action: open_position
+    condition: "not in_trading_window(current_time, rules.trading_window)"
+    reason: "Fuera de la ventana horaria permitida"
+
+  - action: increase_size
+    condition: "not in_trading_window(current_time, rules.trading_window)"
+    reason: "Fuera de la ventana horaria permitida"
+
+  - action: open_position
+    condition: "minutes_to_next_news_event is not None and minutes_to_next_news_event < rules.news_blackout_minutes"
+    reason: "Dentro de la ventana de blackout por noticia de alto impacto"
+
+  - action: increase_size
+    condition: "minutes_to_next_news_event is not None and minutes_to_next_news_event < rules.news_blackout_minutes"
+    reason: "Dentro de la ventana de blackout por noticia de alto impacto"
+
+# Tier 2 -- LOG: la accion se permite, pero queda marcada para revision.
+log:
+  - action: open_position
+    condition: "daily_pnl <= (rules.max_daily_loss * 0.6)"
+    reason: "Cerca del limite de perdida diaria -- monitorear"
+
+  - action: modify_stop
+    condition: "true"
+    reason: "Modificacion de stop -- registrado para auditoria"
+
+  - action: modify_target
+    condition: "true"
+    reason: "Modificacion de target -- registrado para auditoria"
+
+  - action: close_position
+    condition: "true"
+    reason: "Cierre de posicion -- registrado para auditoria"
+
+# PENDIENTE, no implementado aqui: un limite sobre la fraccion de Kelly
+# solicitada. El motor real no expone la fraccion de Kelly cruda como
+# un valor 0.0-1.0 comparable a un cap -- _riesgo_kelly() calcula
+# directo un monto en dolares y lo topa via kelly_techo_riesgo_pct
+# (2% del capital), un mecanismo distinto. Para habilitar esta regla
+# de verdad, _riesgo_kelly() tendria que exponer la fraccion cruda
+# antes de aplicar el techo, y pasarla en proposed_params. No se agrega
+# una regla que nunca puede dispararse solo para "verse completo".
