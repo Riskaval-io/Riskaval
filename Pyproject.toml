@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "riskaval"
+version = "0.1.0"
+description = "Fail-closed risk infrastructure for AI agents. Built by someone who trades."
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+dependencies = [
+    "pyyaml>=6.0",
+]
+
+[project.urls]
+Repository = "https://github.com/Riskaval-io/Riskaval"
+
+[tool.setuptools]
+py-modules = [
+    "policy_engine",
+    "audit_schema",
+    "anonymizer",
+    "aggregated_dataset",
+]
