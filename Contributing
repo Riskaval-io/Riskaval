@@ -1,0 +1,39 @@
+# Contributing
+
+RiskAval is early-stage and single-maintainer right now, so the process
+is intentionally light.
+
+## Questions and ideas
+
+Open a [GitHub Discussion](../../discussions) rather than an issue if
+you're not sure something is a bug — this keeps the issue tracker for
+confirmed problems and well-defined requests, and it's a better place
+to sanity-check an idea before writing code for it.
+
+## Reporting a bug
+
+Open an issue with:
+- What you expected `evaluate()` to return, and what it actually returned.
+- Your `policy_config.yaml` (redact anything sensitive).
+- The `proposed_params`, `market_context`, and `risk_state` you passed in.
+
+If it's a security issue (the engine approves something it should have
+blocked), see [SECURITY.md](SECURITY.md) instead — don't open a public
+issue for that.
+
+## Proposing a change
+
+1. Open a Discussion first for anything that changes behavior, not just
+   fixes a bug — a quick conversation before code saves everyone time.
+2. Run `python3 -m unittest test_policy_engine.py -v` before submitting
+   — all existing tests should still pass, and new behavior should come
+   with a new test case.
+3. Keep the fail-closed principle intact: if a change makes the engine
+   *more* permissive by default in an ambiguous case, it needs a strong
+   justification in the PR description.
+
+## What this project explicitly avoids
+
+- Auto-approving anything by default when a condition can't be evaluated.
+- Silent behavior changes to `policy_config_example.yaml` without
+  updating the tests that depend on its current values.

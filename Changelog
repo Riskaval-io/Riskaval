@@ -1,0 +1,31 @@
+# Changelog
+
+All notable changes to this project are documented here.
+
+## [0.1.0] - 2026-07-30
+
+Initial public release.
+
+### Added
+- Fail-closed policy engine (`policy_engine.py`) — YAML-configured rules
+  across three tiers (approve / log / block).
+- Behavioral audit schema (`audit_schema.py`).
+- Anonymization layer for sharing usage data (`anonymizer.py`).
+- Aggregated dataset export to CSV/JSONL (`aggregated_dataset.py`).
+- End-to-end example (`complete_flow.py`).
+- Automated test suite (`test_policy_engine.py`), 9 tests, no external
+  dependencies beyond `pyyaml`.
+- `pip`-installable via `pyproject.toml`.
+- `GETTING_STARTED.md` with a non-trading example.
+- `SECURITY.md` vulnerability disclosure policy.
+
+### Fixed (from internal audit before this release)
+- Combined exposure check: a new order was checked in isolation against
+  the contract cap, missing the case where existing open contracts plus
+  a new order together exceed it.
+- `increase_size` had the same gap for agents adding to an already-open
+  position.
+- Trading window check didn't support windows crossing midnight.
+- SQL table name was interpolated without validation (allowlist added).
+- Postgres connections had no timeout.
+- Anthropic API calls had no retry for transient network errors.

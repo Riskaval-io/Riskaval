@@ -1,0 +1,151 @@
+"""
+test_policy_engine.py -- Pruebas automatizadas del motor de politicas.
+
+Usa unittest (incluido en Python, sin dependencias externas) a proposito
+-- un piloto evaluando este proyecto no deberia necesitar instalar nada
+mas que pyyaml para poder correr y verificar estas pruebas el mismo.
+
+Corre con: python3 -m unittest test_policy_engine.py -v
+
+Estos son los mismos 7 casos que se verificaron manualmente durante el
+desarrollo (ver complete_flow.py) -- convertidos aqui a pruebas reales,
+automatizadas, y repetibles por cualquiera, no solo verificadas una vez
+por quien escribio el codigo.
+"""
+import os
+import tempfile
+import unittest
+from datetime import datetime, timezone
+
+from policy_engine import PolicyEngine
+from audit_schema import ActionType, Decision, MarketContext, RiskState
+
+TEST_CONFIG = """
+account_id: "test-account"
+rules:
+  max_daily_loss: -800
+  max_weekly_loss: -2000
+  max_contracts: 2
+  trading_window:
+    start: "09:30"
+    end: "16:00"
+  news_blackout_minutes: 20
+block:
+  - action: open_position
+    condition: "daily_pnl <= rules.max_daily_loss"
+    reason: "Daily loss limit reached"
+  - action: open_position
+    condition: "weekly_pnl <= rules.max_weekly_loss"
+    reason: "Weekly loss limit reached"
+  - action: open_position
+    condition: "params.get('contracts', 0) > rules.max_contracts"
+    reason: "Single order exceeds max contracts"
+  - action: open_position
+    condition: "(open_contracts + params.get('contracts', 0)) > rules.max_contracts"
+    reason: "Combined exposure exceeds max contracts"
+  - action: increase_size
+    condition: "(open_contracts + params.get('contracts', 0)) > rules.max_contracts"
+    reason: "Combined exposure exceeds max contracts on increase"
+  - action: open_position
+    condition: "not in_trading_window(current_time, rules.trading_window)"
+    reason: "Outside trading window"
+  - action: open_position
+    condition: "minutes_to_next_news_event is not None and minutes_to_next_news_event < rules.news_blackout_minutes"
+    reason: "Inside news blackout window"
+log:
+  - action: modify_stop
+    condition: "true"
+    reason: "Stop modification logged for audit"
+"""
+
+
+class TestPolicyEngine(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        fd, cls.config_path = tempfile.mkstemp(suffix=".yaml")
+        with os.fdopen(fd, "w") as f:
+            f.write(TEST_CONFIG)
+        cls.engine = PolicyEngine(cls.config_path)
+
+    @classmethod
+    def tearDownClass(cls):
+        os.remove(cls.config_path)
+
+    def _evaluate(self, action_type, params, daily_pnl=0.0, weekly_pnl=0.0,
+                  open_contracts=0, hour=10, minute=0, news_minutes=None):
+        return self.engine.evaluate(
+            action_type=action_type,
+            proposed_params=params,
+            market_context=MarketContext(
+                timestamp=datetime(2026, 7, 29, hour, minute, tzinfo=timezone.utc),
+                instrument="TEST", price=100.0, atr=5.0,
+                minutes_to_next_news_event=news_minutes,
+            ),
+            risk_state=RiskState(
+                daily_pnl=daily_pnl, weekly_pnl=weekly_pnl,
+                open_contracts=open_contracts, account_equity=50000.0,
+            ),
+            agent_id="test-agent", account_id="test-account",
+        )
+
+    def test_normal_conditions_approved(self):
+        result = self._evaluate(ActionType.OPEN_POSITION, {"contracts": 1})
+        self.assertEqual(result.decision, Decision.APPROVED)
+
+    def test_single_order_exceeds_max_contracts_blocked(self):
+        result = self._evaluate(ActionType.OPEN_POSITION, {"contracts": 5})
+        self.assertEqual(result.decision, Decision.BLOCKED)
+        self.assertIn("exceeds max contracts", result.reason)
+
+    def test_outside_trading_window_blocked(self):
+        result = self._evaluate(ActionType.OPEN_POSITION, {"contracts": 1}, hour=20)
+        self.assertEqual(result.decision, Decision.BLOCKED)
+        self.assertIn("trading window", result.reason)
+
+    def test_daily_loss_limit_blocked(self):
+        result = self._evaluate(ActionType.OPEN_POSITION, {"contracts": 1}, daily_pnl=-850.0)
+        self.assertEqual(result.decision, Decision.BLOCKED)
+        self.assertIn("Daily loss", result.reason)
+
+    def test_combined_exposure_blocked_even_when_single_order_is_fine(self):
+        # 1 contrato ya abierto + 2 nuevos = 3, excede el max de 2 -- pero
+        # la orden nueva (2) sola NO excede el max por si sola. Este es el
+        # caso exacto que la auditoria de hoy encontro como hueco real.
+        result = self._evaluate(ActionType.OPEN_POSITION, {"contracts": 2}, open_contracts=1)
+        self.assertEqual(result.decision, Decision.BLOCKED)
+        self.assertIn("Combined exposure", result.reason)
+
+    def test_increase_size_combined_exposure_blocked(self):
+        # open_contracts=1 (bajo el cap de 2) pero pide +5 -- la regla
+        # vieja ("open_contracts >= max") no detectaba esto.
+        result = self._evaluate(ActionType.INCREASE_SIZE, {"contracts": 5}, open_contracts=1)
+        self.assertEqual(result.decision, Decision.BLOCKED)
+
+    def test_news_blackout_blocked(self):
+        result = self._evaluate(ActionType.OPEN_POSITION, {"contracts": 1}, news_minutes=5)
+        self.assertEqual(result.decision, Decision.BLOCKED)
+        self.assertIn("news blackout", result.reason)
+
+    def test_generic_non_trading_action_works(self):
+        # Verifica que una accion que NO es de trading (string libre,
+        # no un miembro de ActionType) funciona igual -- la aclaracion
+        # que agregamos a audit_schema.py, ahora con prueba real detras.
+        result = self._evaluate("send_email", {"recipient_count": 3})
+        self.assertIn(result.decision, [Decision.APPROVED, Decision.LOGGED])
+
+    def test_malformed_yaml_fails_closed(self):
+        # Si el YAML tiene 'rules' como lista en vez de diccionario,
+        # el motor debe fallar al construirse, no arrancar silenciosamente
+        # con una config rota.
+        fd, bad_path = tempfile.mkstemp(suffix=".yaml")
+        with os.fdopen(fd, "w") as f:
+            f.write("rules:\n  - esto\n  - es\n  - una\n  - lista\n")
+        try:
+            with self.assertRaises(Exception):
+                PolicyEngine(bad_path)
+        finally:
+            os.remove(bad_path)
+
+
+if __name__ == "__main__":
+    unittest.main()
