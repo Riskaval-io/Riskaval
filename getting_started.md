@@ -7,7 +7,7 @@ sends emails and deletes files — no trading concepts required.
 ## Install
 
 ```bash
-pip install git+https://github.com/Riskaval-io/Riskaval.git
+pip install git+https://github.com/Riskaval-io/Riskaval.git@v0.1.0
 ```
 
 ## Write your policy config
